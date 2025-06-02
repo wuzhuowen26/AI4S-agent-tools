@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bohrium-agents
+  namespace: uni-space
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bohrium-agents
+  template:
+    metadata:
+      labels:
+        app: bohrium-agents
+    spec:
+      containers:
+        - name: api
+          image: registry.dp.tech/mlops/bohrium-agents:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: BOHRIUM_AGENTS_API_URL
+              value: "https://bohrium-agents-demo.mlops.dp.tech"
+          envFrom:
+            - secretRef:
+                name: bohrium-agents-credentials
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          imagePullPolicy: Always
+

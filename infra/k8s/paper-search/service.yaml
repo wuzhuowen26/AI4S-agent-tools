@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: paper-search
+  namespace: uni-space
+  labels: {app: paper-search}
+spec:
+  selector: {app: paper-search}
+  ports:
+    - name: paper-search
+      protocol: TCP
+      port: 80               
+      targetPort: 50001 

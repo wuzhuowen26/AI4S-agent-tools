@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:          # 对 main / master 任何 push
+    branches: [ main, master ]
+  pull_request:  # PR 目标为 main / master
+    branches: [ main, master ]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # ---------- ① 检测改动 ----------
+    - name: Detect modified tools
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        token: ${{ github.token }}
+        list-files: shell
+        filters: |
+          tools-changed:
+            - added|modified: 'servers/*/**'
+
+    # ---------- ② 如果没有 tool 改动则跳过 ----------
+    - name: Skip when nothing to build
+      if: steps.filter.outputs.tools-changed == 'false'
+      run: echo "No tools changed – skipping build & test."
+
+    # ---------- ③ 安装 Python / 依赖 ----------
+    - name: Set up Python 3.12
+      if: steps.filter.outputs.tools-changed == 'true'
+      uses: actions/setup-python@v4
+      with: {python-version: '3.12'}
+
+    - name: Install project dependencies
+      if: steps.filter.outputs.tools-changed == 'true'
+      run: |
+        python -m pip install -U pip uv
+        pip install flake8
+
+    # ---------- ④ 构建 + 轻量测试改动的工具 ----------
+    - name: Build & test changed tools
+      if: steps.filter.outputs.tools-changed == 'true'
+      run: |
+        declare -A changed=()
+        for f in ${{ steps.filter.outputs.tools-changed_files }}; do
+          tool=$(echo "$f" | cut -d/ -f2)
+          changed["$tool"]=1
+        done
+
+        echo "Tools to build: ${!changed[@]}"
+        for t in "${!changed[@]}"; do
+          echo "🔨 Building $t"
+          python hack/build_docker.py "$t"
+          python hack/gen_k8s.py "$t" 50001
+        done

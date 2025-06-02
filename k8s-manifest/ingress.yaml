@@ -1,0 +1,66 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  labels:
+    app: bohrium-agents
+  name: bohrium-agents
+  namespace: uni-space
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "200M"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Access-Control-Allow-Origin: *";
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: PUT, GET, POST, OPTIONS, DELETE, PATCH
+spec:
+  rules:
+    - host: bohrium-agents-demo.mlops.dp.tech
+      http:
+        paths:
+          - backend:
+              service:
+                name: bohrium-agents
+                port:
+                  number: 80
+            path: /
+            pathType: Prefix
+  tls:
+    - hosts:
+        - bohrium-agents-demo.mlops.dp.tech
+      secretName: tls.mlops.dp.tech
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  labels:
+    app: bohrium-agents-ag-ui-endpoint
+  name: bohrium-agents-ag-ui-endpoint
+  namespace: uni-space
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "200M"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Access-Control-Allow-Origin: *";
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: PUT, GET, POST, OPTIONS, DELETE, PATCH
+spec:
+  rules:
+    - host: bohrium-agents-ag-ui-endpoint.mlops.dp.tech
+      http:
+        paths:
+          - backend:
+              service:
+                name: bohrium-agents
+                port:
+                  number: 81
+            path: /
+            pathType: Prefix
+  tls:
+    - hosts:
+        - bohrium-agents-ag-ui-endpoint.mlops.dp.tech
+      secretName: tls.mlops.dp.tech

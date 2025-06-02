@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ name }}
+  namespace: uni-space
+  labels:
+    app: {{ name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: {{ name }}}
+  template:
+    metadata:
+      labels: {app: {{ name }}}
+    spec:
+      containers:
+      - name: {{ name }}
+        image: {{ image }}
+        imagePullPolicy: IfNotPresent          
+        ports:
+          - containerPort: {{ port }}
+        envFrom:
+          - secretRef: {name: {{ name }}-secret}
+        resources:
+          requests: {cpu: "100m", memory: "256Mi"}
+          limits:   {cpu: "500m", memory: "512Mi"}
+        readinessProbe:
+          httpGet: {path: /, port: {{ port }}}
+          initialDelaySeconds: 5
+          periodSeconds: 30
+        livenessProbe:
+          httpGet: {path: /, port: {{ port }}}
+          initialDelaySeconds: 10
+          periodSeconds: 30
