@@ -23,12 +23,12 @@ jobs:
           tools-changed:
             - added|modified: 'servers/*/**'
 
-  - name: Set up kubeconfig
-    run: |
-      mkdir -p ~/.kube
-      echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
-      chmod 600 ~/.kube/config
-      export KUBECONFIG=~/.kube/config
+    - name: Set up kubeconfig
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+        chmod 600 ~/.kube/config
+        export KUBECONFIG=~/.kube/config
 
     - name: Skip when nothing to build
       if: steps.filter.outputs.tools-changed == 'false'
