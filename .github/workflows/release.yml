@@ -9,6 +9,7 @@ permissions:
   packages: write      # 推 GHCR
 
 jobs:
+
   build-and-push:
     runs-on: ubuntu-latest
 
@@ -18,6 +19,10 @@ jobs:
 
     - name: Install dependencies
       run: pip install -r requirements.txt
+
+    - name: Set up kubeconfig
+      run: |
+        echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
 
     - name: Log in to GHCR
       uses: docker/login-action@v3
@@ -54,12 +59,8 @@ jobs:
       run: |
         for tool in ${{ steps.new.outputs.dirs }}; do
           echo "🚀 Building $tool"
-          python hack/build_docker.py "$tool"
+          python hack/build_docker.py "$tool" --push
           python hack/gen_k8s.py "$tool" 50001
-
-          dst="ghcr.io/${{ github.repository }}/$tool:${TAG}"
-          docker tag "${tool}:latest" "$dst"
-          docker push "$dst"
         done
 
     # ---------- ④ 创建 GitHub Release ----------

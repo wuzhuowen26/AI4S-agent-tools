@@ -2,33 +2,50 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ name }}
-  namespace: uni-space
+  namespace: deepmodeling
   labels:
     app: {{ name }}
 spec:
   replicas: 1
+  # 与运行中版本保持一致的发布策略与回滚配置
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+
   selector:
-    matchLabels: {app: {{ name }}}
+    matchLabels:
+      app: {{ name }}
+
   template:
     metadata:
-      labels: {app: {{ name }}}
+      labels:
+        app: {{ name }}
     spec:
+      terminationGracePeriodSeconds: 30          # 平滑终止
       containers:
-      - name: {{ name }}
-        image: {{ image }}
-        imagePullPolicy: IfNotPresent          
-        ports:
-          - containerPort: {{ port }}
-        envFrom:
-          - secretRef: {name: {{ name }}-secret}
-        resources:
-          requests: {cpu: "100m", memory: "256Mi"}
-          limits:   {cpu: "500m", memory: "512Mi"}
-        readinessProbe:
-          httpGet: {path: /, port: {{ port }}}
-          initialDelaySeconds: 5
-          periodSeconds: 30
-        livenessProbe:
-          httpGet: {path: /, port: {{ port }}}
-          initialDelaySeconds: 10
-          periodSeconds: 30
+        - name: {{ name }}
+          image: {{ image }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: {{ port }}
+              protocol: TCP
+
+          # 注入敏感配置（与原始部署一致）
+          envFrom:
+            - secretRef:
+                name: {{ name }}-credentials
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File

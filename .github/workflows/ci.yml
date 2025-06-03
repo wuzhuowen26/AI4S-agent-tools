@@ -13,7 +13,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # ---------- ① 检测改动 ----------
     - name: Detect modified tools
       id: filter
       uses: dorny/paths-filter@v3
@@ -24,12 +23,14 @@ jobs:
           tools-changed:
             - added|modified: 'servers/*/**'
 
-    # ---------- ② 如果没有 tool 改动则跳过 ----------
+    - name: Set up kubeconfig
+      run: |
+        echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+
     - name: Skip when nothing to build
       if: steps.filter.outputs.tools-changed == 'false'
       run: echo "No tools changed – skipping build & test."
 
-    # ---------- ③ 安装 Python / 依赖 ----------
     - name: Set up Python 3.12
       if: steps.filter.outputs.tools-changed == 'true'
       uses: actions/setup-python@v4
@@ -42,7 +43,13 @@ jobs:
         pip install -r requirements.txt
         pip install flake8
 
-    # ---------- ④ 构建 + 轻量测试改动的工具 ----------
+    - name: Log in to registry.dp.tech
+      uses: docker/login-action@v3
+      with:
+        registry: registry.dp.tech
+        username: dplc@dptech
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
     - name: Build & test changed tools
       if: steps.filter.outputs.tools-changed == 'true'
       run: |
@@ -56,5 +63,27 @@ jobs:
         for t in "${!changed[@]}"; do
           echo "🔨 Building $t"
           python hack/build_docker.py "$t"
+          
+          echo "⚙️ Generating k8s config for $t"
           python hack/gen_k8s.py "$t" 50001
+          
+          # 验证生成的k8s配置语法
+          tool_lower=$(echo "$t" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          echo "✅ Validating k8s configs for $tool_lower"
+          kubectl --dry-run=client apply -f "infra/k8s/$tool_lower/" || true
+        done
+
+    - name: Deploy to Kubernetes
+      if: steps.filter.outputs.tools-changed == 'true' && github.ref == 'refs/heads/main'
+      run: |
+        declare -A changed=()
+        for f in ${{ steps.filter.outputs.tools-changed_files }}; do
+          tool=$(echo "$f" | cut -d/ -f2)
+          changed["$tool"]=1
+        done
+
+        for t in "${!changed[@]}"; do
+          tool_lower=$(echo "$t" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          echo "🚀 Deploying $t to Kubernetes"
+          kubectl apply -f "infra/k8s/$tool_lower/"
         done
