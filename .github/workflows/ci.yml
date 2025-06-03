@@ -51,7 +51,7 @@ jobs:
 
           tool_lower=$(echo "$tool" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
           echo "✅ Validating k8s configs for $tool_lower"
-          kubectl --dry-run=client apply -f "infra/k8s/$tool_lower/" || true
+          kubectl apply -f "infra/k8s/$tool_lower/" || true
 
           echo "🚀 Deploying $tool_lower to Kubernetes"
           kubectl apply -f "infra/k8s/$tool_lower/"
