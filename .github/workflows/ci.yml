@@ -1,17 +1,27 @@
 name: CI
 
 on:
-  push:
+  push:          # 对 main / master 任何 push
     branches: [ main, master ]
-  pull_request:
+  pull_request:  # PR 目标为 main / master
     branches: [ main, master ]
 
 jobs:
-  build-and-deploy:
+  test-and-build:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Detect modified tools
+      id: filter
+      uses: dorny/paths-filter@v3
+      with:
+        token: ${{ github.token }}
+        list-files: shell
+        filters: |
+          tools-changed:
+            - added|modified: 'servers/*/**'
 
     - name: Set up kubeconfig
       run: |
@@ -20,12 +30,17 @@ jobs:
         chmod 600 ~/.kube/config
         export KUBECONFIG=~/.kube/config
 
+    - name: Skip when nothing to build
+      if: steps.filter.outputs.tools-changed == 'false'
+      run: echo "No tools changed – skipping build & test."
+
     - name: Set up Python 3.12
+      if: steps.filter.outputs.tools-changed == 'true'
       uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
+      with: {python-version: '3.12'}
 
     - name: Install project dependencies
+      if: steps.filter.outputs.tools-changed == 'true'
       run: |
         python -m pip install -U pip
         pip install -r requirements.txt
@@ -38,21 +53,54 @@ jobs:
         username: dplc@dptech
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build & deploy all tools
+    - name: Build & test changed tools
+      if: steps.filter.outputs.tools-changed == 'true'
       run: |
-        for dir in servers/*/; do
-          tool=$(basename "$dir")
+        declare -A changed=()
+        for f in ${{ steps.filter.outputs.tools-changed_files }}; do
+          tool=$(echo "$f" | cut -d/ -f2)
+          changed["$tool"]=1
+        done
 
-          echo "🔨 Building $tool"
-          python hack/build_docker.py "$tool" --push
-
-          echo "⚙️ Generating k8s config for $tool"
-          python hack/gen_k8s.py "$tool" 50001
-
-          tool_lower=$(echo "$tool" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+        echo "Tools to build: ${!changed[@]}"
+        for t in "${!changed[@]}"; do
+          echo "🔨 Building $t"
+          python hack/build_docker.py "$t" --push
+          
+          echo "⚙️ Generating k8s config for $t"
+          python hack/gen_k8s.py "$t" 50001
+          
+          # 验证生成的k8s配置语法
+          tool_lower=$(echo "$t" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
           echo "✅ Validating k8s configs for $tool_lower"
           kubectl apply -f "infra/k8s/$tool_lower/" || true
+        done
 
-          echo "🚀 Deploying $tool_lower to Kubernetes"
+    - name: Deploy to Kubernetes
+      if: steps.filter.outputs.tools-changed == 'true' && github.ref == 'refs/heads/main'
+      run: |
+        declare -A changed=()
+        for f in ${{ steps.filter.outputs.tools-changed_files }}; do
+          tool=$(echo "$f" | cut -d/ -f2)
+          changed["$tool"]=1
+        done
+
+        for t in "${!changed[@]}"; do
+          tool_lower=$(echo "$t" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          echo "🚀 Deploying $t to Kubernetes"
           kubectl apply -f "infra/k8s/$tool_lower/"
+        done
+    - name: check mcpserver
+      run: |
+        for t in "${!changed[@]}"; do
+          tool_lower=$(echo "$t" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
+          echo "🚀 check $t"
+          result=$(curl http://${t}-mcp.mlops.dp.tech/sse)
+          echo "result: $result"
+          if [ "$result" == "Not Found" ]; then
+            echo "🚀 $t is not found"
+            exit 1
+          else
+            echo "🚀 $t is found"
+          fi
         done

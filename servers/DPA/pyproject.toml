@@ -19,5 +19,6 @@ dependencies = [
     "spglib",
     "matplotlib",    
     "typing-extensions",  
-    "pyyaml"           
+    "pyyaml",
+    "science-agent-sdk"    
 ]
