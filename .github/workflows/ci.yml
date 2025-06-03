@@ -44,7 +44,7 @@ jobs:
           tool=$(basename "$dir")
 
           echo "🔨 Building $tool"
-          python hack/build_docker.py "$tool"
+          python hack/build_docker.py "$tool" --push
 
           echo "⚙️ Generating k8s config for $tool"
           python hack/gen_k8s.py "$tool" 50001
