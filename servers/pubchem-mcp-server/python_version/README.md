@@ -65,3 +65,7 @@ The server is configured to cache API responses to improve performance:
 - Optional: RDKit (for enhanced 3D structure generation)
 
 If RDKit is not available, the server will fall back to using a simplified SDF parser for XYZ format conversion.
+
+## FastMCP
+
+- python pubchem-mcp-server/python_version/server.py
