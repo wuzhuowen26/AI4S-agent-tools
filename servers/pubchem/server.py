@@ -1,7 +1,3 @@
-import arxiv
-import json
-import os
-from typing import List
 from mcp.server.fastmcp import FastMCP
 from python_version.mcp_server import handle_tool_call
 mcp = FastMCP("pubchem", host="0.0.0.0",port=50001)
