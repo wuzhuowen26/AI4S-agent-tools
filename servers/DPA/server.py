@@ -249,7 +249,7 @@ def optimize_crystal_structure(
     Args:
         input_structure (Path): Path to the input structure file (e.g., CIF, POSCAR).
         model_path (Path): Path to the trained Deep Potential model directory.
-            Default is "bohrium://13756/27666/store/upload/d7af9d6c-ae70-40b5-a85b-1a62269946b8/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         force_tolerance (float, optional): Convergence threshold for atomic forces in eV/Å.
             Default is 0.01 eV/Å.
         max_iterations (int, optional): Maximum number of geometry optimization steps.
@@ -319,7 +319,7 @@ def calculate_phonon(
     Args:
         cif_file (Path): Path to the input CIF structure file.
         model_path (Path): Path to the Deep Potential model file.
-            Default is "bohrium://13756/27666/store/upload/d7af9d6c-ae70-40b5-a85b-1a62269946b8/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         supercell_matrix (list[int], optional): 3×3 matrix for supercell expansion.
             Defaults to [3,3,3].
         displacement_distance (float, optional): Atomic displacement distance in Ångström.
@@ -733,7 +733,7 @@ def calculate_elastic_constants(
     Args:
         cif_file (Path): Path to the input CIF file of the fully relaxed structure.
         model_path (Path): Path to the Deep Potential model file.
-            Default is "bohrium://13756/27666/store/upload/d7af9d6c-ae70-40b5-a85b-1a62269946b8/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         norm_strains (ArrayLike): strain values to apply to each normal mode.
             Default is np.linspace(-0.01, 0.01, 4).
         norm_shear_strains (ArrayLike): strain values to apply to each shear mode.
