@@ -108,9 +108,9 @@ def main():
     build_arg = f"--build-arg BASE_IMG={BASE_TAG}" if BASE_TAG else ""
     
     if args.push:
-        sh(f"docker buildx build --platform=linux/amd64 -f {DOCKERFILE_PATH} {build_arg} -t {img_tag} --push {TOOL_DIR}")
+        sh(f"docker buildx build --no-cache --platform=linux/amd64 -f {DOCKERFILE_PATH} {build_arg} -t {img_tag} --push {TOOL_DIR}")
     else:
-        sh(f"docker buildx build --platform=linux/amd64 -f {DOCKERFILE_PATH} {build_arg} -t {img_tag} {TOOL_DIR}")
+        sh(f"docker buildx build --no-cache --platform=linux/amd64 -f {DOCKERFILE_PATH} {build_arg} -t {img_tag} {TOOL_DIR}")
 
     if SAVE_TAR:
         tar_path = f"{TOOL_NAME}.tar"
