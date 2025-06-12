@@ -25,7 +25,6 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.analysis.elasticity import DeformedStructureSet, ElasticTensor, Strain
 from pymatgen.analysis.elasticity.elastic import get_strain_state_dict
 from ase.mep import NEB, NEBTools
-
 ### CONSTANTS
 DEFAULT_HEAD = "MP_traj_v024_alldata_mixu"
 THz_TO_K = 47.9924  # 1 THz ≈ 47.9924 K
@@ -50,7 +49,7 @@ class OptimizationResult(TypedDict):
     final_energy: float
     message: str
 
-
+ 
 class PhononResult(TypedDict):
     """Result structure for phonon calculation"""
     entropy: float
