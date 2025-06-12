@@ -21,7 +21,7 @@ WORKDIR /servers
 RUN pip install --no-cache-dir uv
 COPY pyproject.toml uv.lock ./
 
-RUN uv venv && uv pip install -r uv.lock --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+RUN uv venv && uv pip install -r uv.lock
 
 
 COPY . .
