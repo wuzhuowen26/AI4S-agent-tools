@@ -1,6 +1,4 @@
-#%%
 
-# server.py
 from fastmcp import FastMCP, Client
 from typing import List
 import requests
@@ -8,36 +6,20 @@ import json
 import os
 from dotenv import load_dotenv
 
-#%%
 
 load_dotenv()
 FASTGPT_AUTH_TOKEN = os.getenv("FASTGPT_AUTH_TOKEN")
-# FASTGPT_AUTH_TOKEN = "fastgpt-xxxxxxxxxxxxxxxxxxxx"  # <--- substitute your token
-
-#%%
-
 
 
 backend = Client("https://api.fastgpt.in/api/mcp/app/wrSvRtDydWEb7faAP6uPooSX/mcp")
-# backend = Client("https://mcp.tryfastgpt.ai/wrSvRtDydWEb7faAP6uPooSX/sse")
 
-
-# Create a proxy server that bridges to the FastGPT backend
 mcp = FastMCP.as_proxy(
     backend, 
     name="FastGPT Proxy Server",
+    host="0.0.0.0",
+    port=50001,
 
 )
-
-#%%
-# @mcp.tool()
-# def chat(question: str):
-#     """
-#     Use the DeePMD-docs knowledge base to answer the question.
-#     already implemented in the FastGPT backend.
-#     The proxy server is used to bridge the FastGPT backend and the futurechat.
-#     """
-#     return "<deepmd-docs-chat-response>"
 
 @mcp.tool()
 def upload_single_file_to_deepmd_knowledge_base(file_url: str):
@@ -66,16 +48,8 @@ def upload_single_file_to_deepmd_knowledge_base(file_url: str):
     print(f"Status: {response.status_code}, Response: {response.text}")
     return response
 
-#%%
-
-# TEST_URL = "https://raw.githubusercontent.com/deepmodeling/deepmd-kit/r3.0/README.md"
-# upload(TEST_URL)
-
-#%%
 
 if __name__ == "__main__":
     # mcp.run(transport='sse')
-    mcp.run(transport='streamable-http', host="127.0.0.1", port=50001, path="/mcp")
+    mcp.run("sse")
     # mcp.run(transport='stdio')
-
-#%%

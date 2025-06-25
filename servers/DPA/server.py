@@ -2,10 +2,9 @@ import logging
 import os
 import glob
 from pathlib import Path
-from typing import Literal, Optional, Tuple, TypedDict, List, Dict
+from typing import Optional, TypedDict, List, Dict
 
 import numpy as np
-import seekpath
 from ase import Atoms, io, units
 from ase.build import bulk, surface
 from ase.io import read, write
@@ -20,13 +19,16 @@ from dp.agent.server import CalculationMCPServer
 from phonopy import Phonopy
 from phonopy.harmonic.dynmat_to_fc import get_commensurate_points
 from phonopy.structure.atoms import PhonopyAtoms
-from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 
+from pymatgen.analysis.elasticity import DeformedStructureSet, ElasticTensor, Strain
+from pymatgen.analysis.elasticity.elastic import get_strain_state_dict
+from ase.mep import NEB, NEBTools
 ### CONSTANTS
 DEFAULT_HEAD = "MP_traj_v024_alldata_mixu"
 THz_TO_K = 47.9924  # 1 THz ≈ 47.9924 K
+EV_A3_TO_GPA = 160.21766208 # eV/Å³ to GPa
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,7 +49,7 @@ class OptimizationResult(TypedDict):
     final_energy: float
     message: str
 
-
+ 
 class PhononResult(TypedDict):
     """Result structure for phonon calculation"""
     entropy: float
@@ -70,6 +72,17 @@ class MDResult(TypedDict):
     final_structure: Path
     trajectory_files: List[Path]
     log_file: Path
+
+class ElasticResult(TypedDict):
+    """Result of elastic constant calculation"""
+    bulk_modulus: float
+    shear_modulus: float
+    youngs_modulus: float
+
+class NEBResult(TypedDict):
+    """Result of NEB calculation"""
+    neb_energy: float
+    neb_traj: Path
 
 
 def _prim2conven(ase_atoms: Atoms) -> Atoms:
@@ -235,7 +248,7 @@ def optimize_crystal_structure(
     Args:
         input_structure (Path): Path to the input structure file (e.g., CIF, POSCAR).
         model_path (Path): Path to the trained Deep Potential model directory.
-            Default is "bohrium://13756/27666/store/upload/d7af9d6c-ae70-40b5-a85b-1a62269946b8/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         force_tolerance (float, optional): Convergence threshold for atomic forces in eV/Å.
             Default is 0.01 eV/Å.
         max_iterations (int, optional): Maximum number of geometry optimization steps.
@@ -305,7 +318,7 @@ def calculate_phonon(
     Args:
         cif_file (Path): Path to the input CIF structure file.
         model_path (Path): Path to the Deep Potential model file.
-            Default is "bohrium://13756/27666/store/upload/d7af9d6c-ae70-40b5-a85b-1a62269946b8/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         supercell_matrix (list[int], optional): 3×3 matrix for supercell expansion.
             Defaults to [3,3,3].
         displacement_distance (float, optional): Atomic displacement distance in Ångström.
@@ -646,6 +659,208 @@ def run_molecular_dynamics(
     }
 
 
+"""
+This elastic calculator has been modified from MatCalc
+https://github.com/materialsvirtuallab/matcalc/blob/main/src/matcalc/_elasticity.py
+https://github.com/materialsvirtuallab/matcalc/blob/main/LICENSE
+BSD 3-Clause License
+Copyright (c) 2023, Materials Virtual Lab
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
+def _get_elastic_tensor_from_strains(
+    strains: np.typing.ArrayLike,
+    stresses: np.typing.ArrayLike,
+    eq_stress: np.typing.ArrayLike = None,
+    tol: float = 1e-7,
+) -> ElasticTensor:
+    """
+    Compute the elastic tensor from given strain and stress data using least-squares
+    fitting.
+    This function calculates the elastic constants from strain-stress relations,
+    using a least-squares fitting procedure for each independent component of stress
+    and strain tensor pairs. An optional equivalent stress array can be supplied.
+    Residuals from the fitting process are accumulated and returned alongside the
+    elastic tensor. The elastic tensor is zeroed according to the given tolerance.
+    """
+
+    strain_states = [tuple(ss) for ss in np.eye(6)]
+    ss_dict = get_strain_state_dict(
+        strains,
+        stresses,
+        eq_stress=eq_stress,
+        add_eq=True if eq_stress is not None else False,
+    )
+    c_ij = np.zeros((6, 6))
+    for ii in range(6):
+        strain = ss_dict[strain_states[ii]]["strains"]
+        stress = ss_dict[strain_states[ii]]["stresses"]
+        for jj in range(6):
+            fit = np.polyfit(strain[:, ii], stress[:, jj], 1, full=True)
+            c_ij[ii, jj] = fit[0][0]
+    elastic_tensor = ElasticTensor.from_voigt(c_ij)
+    return elastic_tensor.zeroed(tol)
+
+@mcp.tool()
+def calculate_elastic_constants(
+    cif_file: Path,
+    model_path: Path,
+    norm_strains: np.typing.ArrayLike = np.linspace(-0.01, 0.01, 4),
+    norm_shear_strains: np.typing.ArrayLike = np.linspace(-0.06, 0.06, 4),
+) -> ElasticResult:
+    """
+    Calculate elastic constants for a fully relaxed crystal structure using a Deep Potential model.
+
+    Args:
+        cif_file (Path): Path to the input CIF file of the fully relaxed structure.
+        model_path (Path): Path to the Deep Potential model file.
+            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+        norm_strains (ArrayLike): strain values to apply to each normal mode.
+            Default is np.linspace(-0.01, 0.01, 4).
+        norm_shear_strains (ArrayLike): strain values to apply to each shear mode.
+            Default is np.linspace(-0.06, 0.06, 4).
+        
+
+    Returns:
+        dict: A dictionary containing:
+            - bulk_modulus (float): Bulk modulus in GPa.
+            - shear_modulus (float): Shear modulus in GPa.
+            - youngs_modulus (float): Young's modulus in GPa.
+    """
+    try:
+        # Read input files
+        relaxed_atoms = read(str(cif_file))
+        model_file = str(model_path)
+        calc = DP(model=model_file, head=DEFAULT_HEAD)
+        
+        structure = AseAtomsAdaptor.get_structure(relaxed_atoms)
+
+        # Create deformed structures
+        deformed_structure_set = DeformedStructureSet(
+            structure,
+            norm_strains,
+            norm_shear_strains,
+        )
+        
+        stresses = []
+        for deformed_structure in deformed_structure_set:
+            atoms = deformed_structure.to_ase_atoms()
+            atoms.calc = calc
+            stresses.append(atoms.get_stress(voigt=False))
+
+        strains = [
+            Strain.from_deformation(deformation)
+            for deformation in deformed_structure_set.deformations
+        ]
+
+        relaxed_atoms.calc = calc
+        eq_stress = relaxed_atoms.get_stress(voigt=False)
+        elastic_tensor = _get_elastic_tensor_from_strains(
+            strains=strains,
+            stresses=stresses,
+            eq_stress=eq_stress,
+        )
+        
+        # Calculate elastic constants
+        bulk_modulus = elastic_tensor.k_vrh * EV_A3_TO_GPA
+        shear_modulus = elastic_tensor.g_vrh * EV_A3_TO_GPA
+        youngs_modulus = 9 * bulk_modulus * shear_modulus / (3 * bulk_modulus + shear_modulus)
+        
+        return {
+            "bulk_modulus": bulk_modulus,
+            "shear_modulus": shear_modulus,
+            "youngs_modulus": youngs_modulus
+        }
+    except Exception as e:
+        logging.error(f"Elastic calculation failed: {str(e)}", exc_info=True)
+        return {
+            "bulk_modulus": None,
+            "shear_modulus": None,
+            "youngs_modulus": None
+        }
+
+
+@mcp.tool()
+def run_neb(
+    initial_structure: Path,
+    final_structure: Path,
+    model_path: Path,
+    n_images: int = 5,
+    max_force: float = 0.05,
+    max_steps: int = 500
+) -> NEBResult:
+    """
+    Run Nudged Elastic Band (NEB) calculation to find minimum energy path between two fully relaxed structures.
+
+    Args:
+        initial_structure (Path): Path to the initial structure file.
+        final_structure (Path): Path to the final structure file.
+        model_path (Path): Path to the Deep Potential model file.
+        n_images (int): Number of images inserted between the initial and final structure in the NEB chain. Default is 5.
+        max_force (float): Maximum force tolerance for convergence in eV/Å. Default is 0.05 eV/Å.
+        max_steps (int): Maximum number of optimization steps. Default is 500.
+
+    Returns:
+        dict: A dictionary containing:
+            - energy_barrier (float): Energy barrier in eV.
+            - neb_traj (Path): Path to the NEB band as a PDF file.
+    """
+    try:
+        model_file = str(model_path)
+        calc = DP(model=model_file, head=DEFAULT_HEAD)
+
+        # Read structures
+        initial_atoms = read(str(initial_structure))
+        final_atoms = read(str(final_structure))
+
+        images = [initial_atoms]
+        images += [initial_atoms.copy() for i in range(n_images)]
+        images += [final_atoms]
+        for image in images:
+            image.calc = calc
+
+        # Setup NEB
+        neb = NEB(images, climb=False, allow_shared_calculator=True)
+        neb.interpolate(method='idpp')
+
+        opt = BFGS(neb)
+        conv = opt.run(fmax=0.45, steps=200)
+        # Turn on climbing image if initial optimization converged
+        if conv:
+            neb.climb = True
+            conv = opt.run(fmax=max_force, steps=max_steps)
+        neb_tool = NEBTools(neb.images)
+        energy_barrier = neb_tool.get_barrier()
+        neb_tool.plot_bands("neb_band.pdf")
+        return {
+            "energy_barrier": energy_barrier,
+            "neb_traj": Path("neb_band.pdf")
+        }
+
+    except Exception as e:
+        logging.error(f"NEB calculation failed: {str(e)}", exc_info=True)
+        return {
+            "neb_energy": None,
+            "neb_traj": Path("")
+        }
 
 if __name__ == "__main__":
     logging.info("Starting Unified MCP Server with all tools...")
