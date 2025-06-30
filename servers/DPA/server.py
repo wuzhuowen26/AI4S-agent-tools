@@ -2,7 +2,7 @@ import logging
 import os
 import glob
 from pathlib import Path
-from typing import Optional, TypedDict, List, Dict
+from typing import Literal, Optional, Tuple, TypedDict, List, Dict
 
 import numpy as np
 from ase import Atoms, io, units
@@ -25,6 +25,7 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.analysis.elasticity import DeformedStructureSet, ElasticTensor, Strain
 from pymatgen.analysis.elasticity.elastic import get_strain_state_dict
 from ase.mep import NEB, NEBTools
+
 ### CONSTANTS
 DEFAULT_HEAD = "MP_traj_v024_alldata_mixu"
 THz_TO_K = 47.9924  # 1 THz ≈ 47.9924 K
@@ -49,7 +50,7 @@ class OptimizationResult(TypedDict):
     final_energy: float
     message: str
 
- 
+
 class PhononResult(TypedDict):
     """Result structure for phonon calculation"""
     entropy: float
@@ -102,28 +103,28 @@ def _prim2conven(ase_atoms: Atoms) -> Atoms:
 
 @mcp.tool()
 def build_structure(
-    structure_type: str,          
+    structure_type: str,
     material1: str,
     conventional: bool = True,
     crystal_structure1: str = 'fcc',
-    a1: float = None,             
-    b1: float = None,
-    c1: float = None,
-    alpha1: float = None,
+    a1: Optional[float] = None,
+    b1: Optional[float] = None,
+    c1: Optional[float] = None,
+    alpha1: Optional[float] = None,
     output_file: str = "structure.cif",
-    miller_index1 = (1, 0, 0),    
+    miller_index1: List[int] = (1, 0, 0),
     layers1: int = 4,
     vacuum1: float = 10.0,
-    material2: str = None,        
+    material2: Optional[str] = None,
     crystal_structure2: str = 'fcc',
-    a2: float = None,
-    b2: float = None,
-    c2: float = None,
-    alpha2: float = None,
-    miller_index2 = (1, 0, 0),    
+    a2: Optional[float] = None,
+    b2: Optional[float] = None,
+    c2: Optional[float] = None,
+    alpha2: Optional[float] = None,
+    miller_index2: List[int] = (1, 0, 0),
     layers2: int = 3,
     vacuum2: float = 10.0,
-    stack_axis: int = 2,         
+    stack_axis: int = 2,
     interface_distance: float = 2.5,
     max_strain: float = 0.05,
 ) -> BuildStructureResult:
@@ -140,7 +141,7 @@ def build_structure(
         c1 (float): Lattice constant c for material1. Only needed for non-cubic structures.
         alpha1 (float): Alpha angle in degrees. Only needed for non-cubic structures.   
         output_file (str): File path to save the generated structure (e.g., .cif). Default 'structure.cif'.
-        miller_index1 (tuple of 3 integers): Miller index for surface orientation. Must be a tuple of exactly 3 integers. Default (1, 0, 0).
+        miller_index1 (list of 3 integers): Miller index for surface orientation. Must be a list of exactly 3 integers. Default (1, 0, 0).
         layers1 (int): Number of atomic layers in slab. Default 4.
         vacuum1 (float): Vacuum spacing in Ångströms. Default 10.0.
         material2 (str): Second material (required for interface). Default None.
@@ -149,7 +150,7 @@ def build_structure(
         b2 (float): Lattice constant b for material2. Only needed for non-cubic structures.
         c2 (float): Lattice constant c for material2. Only needed for non-cubic structures.
         alpha2 (float): Alpha angle in degrees. Only needed for non-cubic structures.
-        miller_index2 (tuple): Miller index for material2 surfaceorientation. Must be a tuple of exactly 3 integers. Default (1, 0, 0).
+        miller_index2 (list): Miller index for material2 surfaceorientation. Must be a list of exactly 3 integers. Default (1, 0, 0).
         layers2 (int): Number of atomic layers in material2 slab. Default 3.
         vacuum2 (float): Vacuum spacing for material2. Default 10.0.
         stack_axis (int): Axis (0=x, 1=y, 2=z) for stacking. Default 2 (z-axis).
@@ -234,7 +235,6 @@ def build_structure(
         }
 
 
-
 @mcp.tool()
 def optimize_crystal_structure( 
     input_structure: Path,
@@ -248,7 +248,7 @@ def optimize_crystal_structure(
     Args:
         input_structure (Path): Path to the input structure file (e.g., CIF, POSCAR).
         model_path (Path): Path to the trained Deep Potential model directory.
-            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         force_tolerance (float, optional): Convergence threshold for atomic forces in eV/Å.
             Default is 0.01 eV/Å.
         max_iterations (int, optional): Maximum number of geometry optimization steps.
@@ -318,7 +318,7 @@ def calculate_phonon(
     Args:
         cif_file (Path): Path to the input CIF structure file.
         model_path (Path): Path to the Deep Potential model file.
-            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         supercell_matrix (list[int], optional): 3×3 matrix for supercell expansion.
             Defaults to [3,3,3].
         displacement_distance (float, optional): Atomic displacement distance in Ångström.
@@ -732,7 +732,7 @@ def calculate_elastic_constants(
     Args:
         cif_file (Path): Path to the input CIF file of the fully relaxed structure.
         model_path (Path): Path to the Deep Potential model file.
-            Default is "local:///personal/TOOLS_IN_DEV/agents_dev/20250525_DPAcalc/example/upload/ae2ff237-5e0c-4266-9435-ad90a5334639/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+            Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
         norm_strains (ArrayLike): strain values to apply to each normal mode.
             Default is np.linspace(-0.01, 0.01, 4).
         norm_shear_strains (ArrayLike): strain values to apply to each shear mode.
