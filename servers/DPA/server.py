@@ -27,7 +27,6 @@ from pymatgen.analysis.elasticity.elastic import get_strain_state_dict
 from ase.mep import NEB, NEBTools
 
 ### CONSTANTS
-DEFAULT_HEAD = "MP_traj_v024_alldata_mixu"
 THz_TO_K = 47.9924  # 1 THz ≈ 47.9924 K
 EV_A3_TO_GPA = 160.21766208 # eV/Å³ to GPa
 
@@ -39,7 +38,7 @@ logging.basicConfig(
 mcp = CalculationMCPServer(
     "DPACalculatorServer", 
     host="0.0.0.0", 
-    port=50001
+    port=50002
 )
 
 
@@ -239,6 +238,7 @@ def build_structure(
 def optimize_crystal_structure( 
     input_structure: Path,
     model_path: Path,
+    head: str = "Omat24",
     force_tolerance: float = 0.01, 
     max_iterations: int = 100, 
 ) -> OptimizationResult:
@@ -249,10 +249,23 @@ def optimize_crystal_structure(
         input_structure (Path): Path to the input structure file (e.g., CIF, POSCAR).
         model_path (Path): Path to the trained Deep Potential model directory.
             Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+        head (str, optional): Model head corresponding to the application domain. Options are:
+            - 'solvated_protein_fragments' : For **biomolecular systems**, such as proteins, peptides, 
+            and molecular fragments in aqueous or biological environments.
+            - 'Omat24' : For **inorganic crystalline materials**, including oxides, metals, ceramics, 
+            and other extended solid-state systems. (This is the **default** head.)
+            - 'SPICE2' : For **organic small molecules**, including drug-like compounds, ligands, 
+            and general organic chemistry structures.
+            - 'OC22' : For **interface and heterogeneous catalysis systems**, such as surfaces, 
+            adsorbates, and catalytic reactions involving solid-liquid or solid-gas interfaces.
+            - 'Organic_Reactions' : For **organic reaction prediction**, transition state modeling, 
+            and energy profiling of organic chemical transformations.
+            Default is 'Omat24', which is suitable for most inorganic materials and crystalline solids.
         force_tolerance (float, optional): Convergence threshold for atomic forces in eV/Å.
             Default is 0.01 eV/Å.
         max_iterations (int, optional): Maximum number of geometry optimization steps.
             Default is 100 steps.
+
 
     Returns:
         dict: A dictionary containing optimization results:
@@ -267,7 +280,7 @@ def optimize_crystal_structure(
         
         logging.info(f"Reading structure from: {input_structure}")
         atoms = read(str(input_structure))
-        atoms.calc = DP(model=model_file, head=DEFAULT_HEAD)
+        atoms.calc = DP(model=model_file, head=head)
 
         traj_file = f"{base_name}_optimization_traj.extxyz"  
         if Path(traj_file).exists():
@@ -308,6 +321,7 @@ def optimize_crystal_structure(
 def calculate_phonon(
     cif_file: Path,
     model_path: Path,
+    head: str = "Omat24",
     supercell_matrix: list[int] = [3,3,3],
     displacement_distance: float = 0.005,
     temperatures: tuple = (300,),
@@ -319,6 +333,18 @@ def calculate_phonon(
         cif_file (Path): Path to the input CIF structure file.
         model_path (Path): Path to the Deep Potential model file.
             Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+        head (str, optional): Model head corresponding to the application domain. Options are:
+            - 'solvated_protein_fragments' : For **biomolecular systems**, such as proteins, peptides, 
+            and molecular fragments in aqueous or biological environments.
+            - 'Omat24' : For **inorganic crystalline materials**, including oxides, metals, ceramics, 
+            and other extended solid-state systems. (This is the **default** head.)
+            - 'SPICE2' : For **organic small molecules**, including drug-like compounds, ligands, 
+            and general organic chemistry structures.
+            - 'OC22' : For **interface and heterogeneous catalysis systems**, such as surfaces, 
+            adsorbates, and catalytic reactions involving solid-liquid or solid-gas interfaces.
+            - 'Organic_Reactions' : For **organic reaction prediction**, transition state modeling, 
+            and energy profiling of organic chemical transformations.
+            Default is 'Omat24', which is suitable for most inorganic materials and crystalline solids.
         supercell_matrix (list[int], optional): 3×3 matrix for supercell expansion.
             Defaults to [3,3,3].
         displacement_distance (float, optional): Atomic displacement distance in Ångström.
@@ -359,8 +385,7 @@ def calculate_phonon(
         phonon.generate_displacements(distance=displacement_distance)
         
         # Calculate forces using DP model
-        from deepmd.calculator import DP
-        dp_calc = DP(model=str(model_path), head=DEFAULT_HEAD)
+        dp_calc = DP(model=str(model_path), head=head)
         
         force_sets = []
         for sc in phonon.supercells_with_displacements:
@@ -556,7 +581,7 @@ def run_molecular_dynamics(
     save_interval_steps: int = 100,
     traj_prefix: str = 'traj',
     seed: Optional[int] = 42,
-    model_head: str = "MP_traj_v024_alldata_mixu"
+    head: str = "Omat24",
 ) -> MDResult:
     """
     Run a multi-stage molecular dynamics simulation using Deep Potential.
@@ -582,7 +607,18 @@ def run_molecular_dynamics(
         save_interval_steps (int): Interval (in MD steps) to save trajectory frames (default: 100).
         traj_prefix (str): Prefix for trajectory output files (default: 'traj').
         seed (int, optional): Random seed for initializing velocities (default: 42).
-        model_head (str): Deep Potential model head name (default: "MP_traj_v024_alldata_mixu").
+        head (str, optional): Model head corresponding to the application domain. Options are:
+            - 'solvated_protein_fragments' : For **biomolecular systems**, such as proteins, peptides, 
+            and molecular fragments in aqueous or biological environments.
+            - 'Omat24' : For **inorganic crystalline materials**, including oxides, metals, ceramics, 
+            and other extended solid-state systems. (This is the **default** head.)
+            - 'SPICE2' : For **organic small molecules**, including drug-like compounds, ligands, 
+            and general organic chemistry structures.
+            - 'OC22' : For **interface and heterogeneous catalysis systems**, such as surfaces, 
+            adsorbates, and catalytic reactions involving solid-liquid or solid-gas interfaces.
+            - 'Organic_Reactions' : For **organic reaction prediction**, transition state modeling, 
+            and energy profiling of organic chemical transformations.
+            Default is 'Omat24', which is suitable for most inorganic materials and crystalline solids.
 
     Returns:
         MDResult: A dictionary containing:
@@ -633,7 +669,7 @@ def run_molecular_dynamics(
     atoms = read(initial_structure)
     
     # Setup calculator
-    model = DP(model=str(model_path), head=model_head)
+    model = DP(model=str(model_path), head=head)
     atoms.calc = model
     
     # Run MD pipeline
@@ -723,6 +759,7 @@ def _get_elastic_tensor_from_strains(
 def calculate_elastic_constants(
     cif_file: Path,
     model_path: Path,
+    head: str = "Omat24",
     norm_strains: np.typing.ArrayLike = np.linspace(-0.01, 0.01, 4),
     norm_shear_strains: np.typing.ArrayLike = np.linspace(-0.06, 0.06, 4),
 ) -> ElasticResult:
@@ -733,6 +770,18 @@ def calculate_elastic_constants(
         cif_file (Path): Path to the input CIF file of the fully relaxed structure.
         model_path (Path): Path to the Deep Potential model file.
             Default is "local:///model/upload/30d126de-b367-4254-90d1-5e41799e2853/dpa-2.4-7M.pt", i.e. the DPA-2.4-7M.
+        head (str, optional): Model head corresponding to the application domain. Options are:
+            - 'solvated_protein_fragments' : For **biomolecular systems**, such as proteins, peptides, 
+            and molecular fragments in aqueous or biological environments.
+            - 'Omat24' : For **inorganic crystalline materials**, including oxides, metals, ceramics, 
+            and other extended solid-state systems. (This is the **default** head.)
+            - 'SPICE2' : For **organic small molecules**, including drug-like compounds, ligands, 
+            and general organic chemistry structures.
+            - 'OC22' : For **interface and heterogeneous catalysis systems**, such as surfaces, 
+            adsorbates, and catalytic reactions involving solid-liquid or solid-gas interfaces.
+            - 'Organic_Reactions' : For **organic reaction prediction**, transition state modeling, 
+            and energy profiling of organic chemical transformations.
+            Default is 'Omat24', which is suitable for most inorganic materials and crystalline solids.
         norm_strains (ArrayLike): strain values to apply to each normal mode.
             Default is np.linspace(-0.01, 0.01, 4).
         norm_shear_strains (ArrayLike): strain values to apply to each shear mode.
@@ -749,7 +798,7 @@ def calculate_elastic_constants(
         # Read input files
         relaxed_atoms = read(str(cif_file))
         model_file = str(model_path)
-        calc = DP(model=model_file, head=DEFAULT_HEAD)
+        calc = DP(model=model_file, head=head)
         
         structure = AseAtomsAdaptor.get_structure(relaxed_atoms)
 
@@ -803,6 +852,7 @@ def run_neb(
     initial_structure: Path,
     final_structure: Path,
     model_path: Path,
+    head: str = "Omat24",
     n_images: int = 5,
     max_force: float = 0.05,
     max_steps: int = 500
@@ -814,6 +864,18 @@ def run_neb(
         initial_structure (Path): Path to the initial structure file.
         final_structure (Path): Path to the final structure file.
         model_path (Path): Path to the Deep Potential model file.
+        head (str, optional): Model head corresponding to the application domain. Options are:
+            - 'solvated_protein_fragments' : For **biomolecular systems**, such as proteins, peptides, 
+            and molecular fragments in aqueous or biological environments.
+            - 'Omat24' : For **inorganic crystalline materials**, including oxides, metals, ceramics, 
+            and other extended solid-state systems. (This is the **default** head.)
+            - 'SPICE2' : For **organic small molecules**, including drug-like compounds, ligands, 
+            and general organic chemistry structures.
+            - 'OC22' : For **interface and heterogeneous catalysis systems**, such as surfaces, 
+            adsorbates, and catalytic reactions involving solid-liquid or solid-gas interfaces.
+            - 'Organic_Reactions' : For **organic reaction prediction**, transition state modeling, 
+            and energy profiling of organic chemical transformations.
+            Default is 'Omat24', which is suitable for most inorganic materials and crystalline solids.
         n_images (int): Number of images inserted between the initial and final structure in the NEB chain. Default is 5.
         max_force (float): Maximum force tolerance for convergence in eV/Å. Default is 0.05 eV/Å.
         max_steps (int): Maximum number of optimization steps. Default is 500.
@@ -825,7 +887,7 @@ def run_neb(
     """
     try:
         model_file = str(model_path)
-        calc = DP(model=model_file, head=DEFAULT_HEAD)
+        calc = DP(model=model_file, head=head)
 
         # Read structures
         initial_atoms = read(str(initial_structure))
